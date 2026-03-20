@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="initial-scale=1.0">
+<meta charset="utf-8">
+<title>GPS Live Tracker</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body, #map { width:100%; height:100vh; font-family:'Courier New',monospace; }
+
+/* ── Login Overlay ── */
+#loginOverlay {
+    position:fixed; inset:0; background:rgba(10,10,10,0.97);
+    display:flex; align-items:center; justify-content:center; z-index:9999;
+}
+#loginBox {
+    background:#1a1a1a; border:1px solid #333; border-radius:12px;
+    padding:36px 40px; width:360px; box-shadow:0 8px 40px rgba(0,0,0,0.6);
+}
+#loginBox h1 { color:#e67e22; font-size:18px; letter-spacing:2px; margin-bottom:6px; }
+#loginBox p  { color:#666; font-size:12px; margin-bottom:28px; }
+.login-label { color:#888; font-size:11px; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; display:block; }
+.login-input {
+    width:100%; background:#111; border:1px solid #333; color:#fff;
+    padding:10px 14px; border-radius:6px; font-family:'Courier New',monospace;
+    font-size:13px; margin-bottom:16px; outline:none; transition:border 0.2s;
+}
+.login-input:focus { border-color:#e67e22; }
+#loginBtn {
+    width:100%; background:#e67e22; color:#fff; border:none;
+    padding:12px; border-radius:6px; font-family:'Courier New',monospace;
+    font-size:13px; font-weight:bold; letter-spacing:1px; cursor:pointer;
+    transition:background 0.2s; margin-bottom:10px;
+}
+#loginBtn:hover { background:#cf6d17; }
+#loginErr { color:#e74c3c; font-size:12px; min-height:18px; text-align:center; }
+#loginTabs { display:flex; gap:8px; margin-bottom:24px; }
+.login-tab {
+    flex:1; padding:8px; background:none; border:1px solid #333;
+    color:#888; font-family:'Courier New',monospace; font-size:12px;
+    border-radius:6px; cursor:pointer; transition:all 0.2s;
+}
+.login-tab.active { border-color:#e67e22; color:#e67e22; background:rgba(230,126,34,0.1); }
+
+/* ── Channel Selector ── */
+#channelOverlay {
+    position:fixed; inset:0; background:rgba(10,10,10,0.97);
+    display:none; align-items:center; justify-content:center; z-index:9998;
+}
+#channelOverlay.show { display:flex; }
+#channelBox {
+    background:#1a1a1a; border:1px solid #333; border-radius:12px;
+    padding:32px 36px; width:400px; box-shadow:0 8px 40px rgba(0,0,0,0.6);
+}
+#channelBox h2 { color:#e67e22; font-size:15px; letter-spacing:2px; margin-bottom:20px; }
+#channelList { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; max-height:300px; overflow-y:auto; }
+.ch-item {
+    background:#111; border:1px solid #333; border-radius:8px;
+    padding:12px 16px; cursor:pointer; transition:border 0.2s;
+    display:flex; justify-content:space-between; align-items:center;
+}
+.ch-item:hover { border-color:#e67e22; }
+.ch-name { color:#fff; font-size:13px; font-weight:bold; }
+.ch-key  { color:#666; font-size:10px; font-family:'Courier New',monospace; }
+#newChForm { border-top:1px solid #222; padding-top:16px; }
+#newChForm p { color:#888; font-size:11px; margin-bottom:12px; }
+#newChName {
+    width:100%; background:#111; border:1px solid #333; color:#fff;
+    padding:9px 12px; border-radius:6px; font-family:'Courier New',monospace;
+    font-size:12px; margin-bottom:8px; outline:none;
+}
+#newChName:focus { border-color:#e67e22; }
+#createChBtn {
+    width:100%; background:#27ae60; color:#fff; border:none;
+    padding:10px; border-radius:6px; font-family:'Courier New',monospace;
+    font-size:12px; font-weight:bold; cursor:pointer; transition:background 0.2s;
+}
+#createChBtn:hover { background:#219a52; }
+#chErr { color:#e74c3c; font-size:11px; margin-top:8px; min-height:16px; }
+
+/* ── Car marker ── */
+.car-marker-wrap {
+    width:36px; height:36px;
+    display:flex; align-items:center; justify-content:center;
+    transition: transform 0.6s ease;
+}
+.car-marker-wrap svg { width:36px; height:36px; }
+
+/* ── Info Box ── */
+#infoBox {
+    position:absolute; top:14px; left:14px;
+    background:rgba(20,20,20,0.92); color:#f0f0f0;
+    padding:14px 18px; font-size:13px; border-radius:8px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.4); z-index:1000;
+    line-height:1.8; min-width:200px; border-left:3px solid #e67e22;
+}
+#infoBox .label { color:#e67e22; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+#infoBox .value { font-size:15px; font-weight:bold; color:#fff; }
+#logoutBtn {
+    margin-top:10px; padding-top:10px; border-top:1px solid #333;
+    display:flex; justify-content:space-between; align-items:center;
+}
+#logoutBtn span { color:#555; font-size:10px; }
+#logoutBtn button {
+    background:none; border:1px solid #444; color:#888;
+    padding:3px 8px; border-radius:4px; font-size:10px;
+    cursor:pointer; font-family:'Courier New',monospace; transition:all 0.2s;
+}
+#logoutBtn button:hover { border-color:#e74c3c; color:#e74c3c; }
+
+/* ── Online/Offline status dot ── */
+#statusRow {
+    display:flex; align-items:center; gap:8px;
+    margin-bottom:6px; padding-bottom:8px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+}
+#statusDot {
+    width:10px; height:10px; border-radius:50%;
+    background:#888; flex-shrink:0;
+    box-shadow:0 0 0 0 rgba(136,136,136,0.4);
+    transition: background 0.4s;
+}
+#statusDot.online  { background:#2ecc71; animation: pulse-green 2s infinite; }
+#statusDot.offline { background:#e74c3c; animation: pulse-red 2s infinite; }
+#statusDot.unknown { background:#888; animation:none; }
+#statusText { font-size:12px; font-weight:bold; letter-spacing:0.5px; color:#888; transition:color 0.4s; }
+#statusText.online  { color:#2ecc71; }
+#statusText.offline { color:#e74c3c; }
+#statusAge { font-size:10px; color:#555; margin-left:auto; font-family:'Courier New',monospace; }
+
+@keyframes pulse-green {
+    0%   { box-shadow:0 0 0 0 rgba(46,204,113,0.6); }
+    70%  { box-shadow:0 0 0 7px rgba(46,204,113,0); }
+    100% { box-shadow:0 0 0 0 rgba(46,204,113,0); }
+}
+@keyframes pulse-red {
+    0%   { box-shadow:0 0 0 0 rgba(231,76,60,0.6); }
+    70%  { box-shadow:0 0 0 7px rgba(231,76,60,0); }
+    100% { box-shadow:0 0 0 0 rgba(231,76,60,0); }
+}
+
+/* ── Bottom buttons row ── */
+#bottomBar {
+    position:absolute; bottom:24px; left:14px;
+    display:flex; gap:10px; z-index:1000; flex-wrap:wrap;
+}
+.bar-btn {
+    background:#e67e22; color:#fff; border:none;
+    padding:10px 16px; font-family:'Courier New',monospace;
+    font-size:12px; font-weight:bold; border-radius:6px;
+    cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.35);
+    letter-spacing:0.5px; transition:background 0.2s; white-space:nowrap;
+}
+.bar-btn:hover { background:#cf6d17; }
+#goLiveBtn { background:#444; color:#888; cursor:default; }
+#goLiveBtn:hover { background:#444; }
+#goLiveBtn.active { background:#27ae60; color:#fff; cursor:pointer; }
+#goLiveBtn.active:hover { background:#219a52; }
+
+/* ── History Panel ── */
+#historyPanel {
+    position:absolute; top:0; right:0; width:340px; height:100vh;
+    background:rgba(15,15,15,0.97); color:#f0f0f0; z-index:2000;
+    display:none; flex-direction:column;
+    box-shadow:-4px 0 20px rgba(0,0,0,0.5);
+}
+#historyPanel.open { display:flex; }
+#historyHeader {
+    padding:16px 18px; border-bottom:1px solid #333;
+    display:flex; justify-content:space-between; align-items:center;
+}
+#historyHeader h2 { font-size:14px; letter-spacing:1.5px; text-transform:uppercase; color:#e67e22; }
+#closePanel { background:none; border:none; color:#aaa; font-size:20px; cursor:pointer; padding:2px 6px; border-radius:4px; }
+#closePanel:hover { color:#fff; }
+
+#dayTabs {
+    display:flex; overflow-x:auto; border-bottom:1px solid #333;
+    padding:0 4px; gap:4px; flex-shrink:0; scrollbar-width:none;
+}
+#dayTabs::-webkit-scrollbar { display:none; }
+.dayTab {
+    flex-shrink:0; padding:8px 12px; font-size:11px;
+    font-family:'Courier New',monospace; background:none; border:none;
+    color:#888; cursor:pointer; border-bottom:2px solid transparent;
+    transition:all 0.2s; text-align:center; line-height:1.4;
+}
+.dayTab:hover { color:#e67e22; }
+.dayTab.active { color:#e67e22; border-bottom-color:#e67e22; }
+.dayTab .day-name { font-weight:bold; display:block; }
+.dayTab .day-date { font-size:10px; opacity:0.7; }
+
+#dayContent {
+    flex:1; overflow-y:auto; padding:14px 18px;
+    scrollbar-width:thin; scrollbar-color:#333 transparent;
+}
+.day-loading { color:#888; font-size:12px; padding:20px 0; text-align:center; }
+.day-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.stat-card {
+    background:rgba(230,126,34,0.1); border:1px solid rgba(230,126,34,0.25);
+    border-radius:6px; padding:10px 12px;
+}
+.stat-card .s-label { font-size:10px; color:#e67e22; text-transform:uppercase; letter-spacing:1px; }
+.stat-card .s-value { font-size:17px; font-weight:bold; color:#fff; margin-top:2px; }
+.action-btn {
+    width:100%; padding:10px; border:none; border-radius:6px;
+    font-family:'Courier New',monospace; font-size:12px; font-weight:bold;
+    cursor:pointer; letter-spacing:0.5px; transition:background 0.2s;
+    margin-bottom:8px; color:#fff;
+}
+.btn-orange { background:#e67e22; } .btn-orange:hover { background:#cf6d17; }
+.btn-green  { background:#27ae60; } .btn-green:hover  { background:#219a52; }
+.btn-blue   { background:#2980b9; } .btn-blue:hover   { background:#2471a3; }
+.no-data { text-align:center; color:#555; font-size:12px; padding:30px 0; }
+
+/* ── Playback Bar ── */
+#playbackBar {
+    position:absolute; bottom:80px; left:50%; transform:translateX(-50%);
+    background:rgba(15,15,15,0.95); color:#fff; padding:12px 18px;
+    border-radius:12px; z-index:1000; display:none;
+    flex-direction:column; gap:8px; min-width:340px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.5); border:1px solid #333;
+}
+#playbackBar.visible { display:flex; }
+#playbackTop { display:flex; align-items:center; gap:10px; }
+#pbPlayBtn {
+    background:#e67e22; border:none; color:#fff;
+    width:34px; height:34px; border-radius:50%; font-size:14px;
+    cursor:pointer; flex-shrink:0; transition:background 0.2s;
+    display:flex; align-items:center; justify-content:center;
+}
+#pbPlayBtn:hover { background:#cf6d17; }
+#pbTimestamp { font-size:12px; color:#e67e22; flex:1; text-align:center; letter-spacing:0.5px; }
+#pbSpeed {
+    background:rgba(230,126,34,0.15); border:1px solid rgba(230,126,34,0.3);
+    color:#e67e22; font-family:'Courier New',monospace; font-size:11px;
+    padding:4px 8px; border-radius:4px; cursor:pointer;
+}
+#pbSliderRow { display:flex; align-items:center; gap:8px; }
+#pbSlider {
+    flex:1; -webkit-appearance:none; height:4px;
+    background:linear-gradient(to right, #e67e22 0%, #444 0%);
+    border-radius:2px; cursor:pointer; outline:none;
+}
+#pbSlider::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    border-radius:50%; background:#e67e22; cursor:pointer;
+    box-shadow:0 0 4px rgba(0,0,0,0.4);
+}
+#pbCurrent { font-size:10px; color:#888; white-space:nowrap; min-width:40px; text-align:right; }
+#pbTotal   { font-size:10px; color:#888; white-space:nowrap; min-width:40px; }
+#pbCloseBtn { background:none; border:none; color:#555; font-size:16px; cursor:pointer; padding:0 2px; }
+#pbCloseBtn:hover { color:#fff; }
+
+/* ── History Legend ── */
+#historyLegend {
+    position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
+    background:rgba(20,20,20,0.9); color:#fff; padding:8px 16px;
+    border-radius:20px; font-size:12px; font-family:'Courier New',monospace;
+    z-index:1000; display:none; align-items:center; gap:10px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.4);
+}
+#historyLegend .dot { width:12px; height:12px; border-radius:50%; background:#3498db; flex-shrink:0; }
+#clearHistoryView {
+    background:none; border:1px solid #555; color:#aaa;
+    padding:3px 8px; border-radius:10px; font-size:11px;
+    cursor:pointer; font-family:'Courier New',monospace; transition:all 0.2s;
+}
+#clearHistoryView:hover { border-color:#e67e22; color:#e67e22; }
+
+/* ── My Location blue dot ── */
+.my-location-wrap {
+    position:relative; width:20px; height:20px;
+    display:flex; align-items:center; justify-content:center;
+}
+.my-location-dot {
+    width:14px; height:14px; border-radius:50%;
+    background:#2980b9; border:2.5px solid #fff;
+    box-shadow:0 0 6px rgba(41,128,185,0.8);
+    position:relative; z-index:2;
+}
+.my-location-pulse {
+    position:absolute; inset:-8px; border-radius:50%;
+    background:rgba(41,128,185,0.25);
+    animation: loc-pulse 2s ease-out infinite;
+}
+@keyframes loc-pulse {
+    0%   { transform:scale(0.5); opacity:1; }
+    100% { transform:scale(1.8); opacity:0; }
+}
+
+/* ── Error Box ── */
+#errorBox {
+    position:absolute; top:14px; right:14px;
+    background:rgba(200,50,50,0.92); color:white;
+    padding:10px 16px; font-family:'Courier New',monospace;
+    font-size:12px; border-radius:6px; z-index:3000; display:none;
+}
+
+/* ── GPSLogger Setup Info ── */
+#setupInfo {
+    position:absolute; bottom:80px; right:14px;
+    background:rgba(20,20,20,0.95); color:#aaa;
+    padding:12px 16px; font-size:11px; border-radius:8px;
+    z-index:1000; display:none; max-width:320px; line-height:1.8;
+    border:1px solid #333;
+}
+#setupInfo .si-title { color:#e67e22; font-weight:bold; margin-bottom:6px; font-size:12px; }
+#setupInfo code { color:#2ecc71; font-size:10px; word-break:break-all; }
+#closeSetup { float:right; background:none; border:none; color:#555; cursor:pointer; font-size:14px; }
+#setupBtn { background:#2c3e50; }
+#setupBtn:hover { background:#1a252f; }
+</style>
+
+<script
+    src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=cxnpqzxawukwpajjqvwfatzjavgzrcxoxsqp&callback=onMapReady"
+    defer async onerror="handleSDKError()">
+</script>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- ══ LOGIN OVERLAY ══ -->
+<div id="loginOverlay">
+    <div id="loginBox">
+        <h1>📍 GPS TRACKER</h1>
+        <p>Sign in to view your live location</p>
+        <div id="loginTabs">
+            <button class="login-tab active" onclick="switchTab('login')">Login</button>
+            <button class="login-tab" onclick="switchTab('signup')">Sign Up</button>
+        </div>
+        <label class="login-label">Email</label>
+        <input class="login-input" type="email" id="li-email" placeholder="you@example.com">
+        <div id="signupFields" style="display:none">
+            <label class="login-label">Username</label>
+            <input class="login-input" type="text" id="li-username" placeholder="tracker_user">
+        </div>
+        <label class="login-label">Password</label>
+        <input class="login-input" type="password" id="li-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doAuth()">
+        <button id="loginBtn" onclick="doAuth()">LOGIN</button>
+        <div id="loginErr"></div>
+    </div>
+</div>
+
+<!-- ══ CHANNEL SELECTOR ══ -->
+<div id="channelOverlay">
+    <div id="channelBox">
+        <h2>SELECT GPS CHANNEL</h2>
+        <div id="channelList"><div class="day-loading">Loading channels...</div></div>
+        <div id="newChForm">
+            <p>No channel yet? Create one:</p>
+            <input id="newChName" type="text" placeholder="e.g. My Car GPS">
+            <button id="createChBtn" onclick="createChannel()">+ Create Channel</button>
+            <div id="chErr"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Live stats -->
+<div id="infoBox" style="display:none">
+    <div id="statusRow">
+        <div id="statusDot" class="unknown"></div>
+        <span id="statusText" class="unknown">CHECKING...</span>
+        <span id="statusAge"></span>
+    </div>
+    <div class="label">Speed</div>
+    <div class="value" id="val-speed">-- km/h</div>
+    <div class="label" style="margin-top:8px">Distance Today</div>
+    <div class="value" id="val-dist">-- km</div>
+    <div class="label" style="margin-top:8px">Distance to Vehicle</div>
+    <div class="value" id="val-dist-to-car">-- m</div>
+    <div class="label" style="margin-top:8px">Last Update</div>
+    <div class="value" id="val-time">--</div>
+    <div id="logoutBtn">
+        <span id="userLabel">--</span>
+        <button onclick="logout()">Logout</button>
+    </div>
+</div>
+
+<!-- Bottom button bar -->
+<div id="bottomBar" style="display:none">
+    <button class="bar-btn" onclick="openHistoryPanel()">📅 7-Day History</button>
+    <button class="bar-btn" id="goLiveBtn" onclick="goLive()">🔴 Go Live</button>
+    <button class="bar-btn" id="setupBtn" onclick="toggleSetup()">📱 Phone Setup</button>
+</div>
+
+<!-- GPSLogger setup info -->
+<div id="setupInfo">
+    <button id="closeSetup" onclick="toggleSetup()">✕</button>
+    <div class="si-title">📱 GPSLogger Android Setup</div>
+    <div id="setupContent">Loading...</div>
+</div>
+
+<!-- History side panel -->
+<div id="historyPanel">
+    <div id="historyHeader">
+        <h2>Route History</h2>
+        <button id="closePanel" onclick="closeHistoryPanel()">✕</button>
+    </div>
+    <div id="dayTabs"></div>
+    <div id="dayContent"><div class="day-loading">Select a day above</div></div>
+</div>
+
+<!-- Playback bar -->
+<div id="playbackBar">
+    <div id="playbackTop">
+        <button id="pbPlayBtn" onclick="togglePlayback()">▶</button>
+        <span id="pbTimestamp">--:--:--</span>
+        <select id="pbSpeed" onchange="changePlaybackSpeed(this.value)">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="5">5×</option>
+            <option value="10">10×</option>
+            <option value="20">20×</option>
+            <option value="50" selected>50×</option>
+            <option value="100">100×</option>
+        </select>
+        <button id="pbCloseBtn" onclick="closePlayback()">✕</button>
+    </div>
+    <div id="pbSliderRow">
+        <span id="pbCurrent">--:--</span>
+        <input type="range" id="pbSlider" min="0" value="0" step="1000" oninput="scrubPlayback(this.value)">
+        <span id="pbTotal">--:--</span>
+    </div>
+</div>
+
+<!-- History route legend -->
+<div id="historyLegend">
+    <div class="dot"></div>
+    <span id="legendLabel">History route</span>
+    <button id="clearHistoryView" onclick="clearHistoryRoute()">✕ Clear</button>
+</div>
+
+<div id="errorBox"></div>
+
+<script>
+/* ══════════════════════════════════════════════
+   CONFIG — set your server URL here
+   Leave as empty string if opening via localhost:3000
+   Set to your ngrok URL when accessing from phone:
+   e.g. 'https://abc123.ngrok-free.app'
+══════════════════════════════════════════════ */
+var SERVER_URL = (function() {
+    var origin = window.location.origin;
+    /* If opened as a file:// or from a different port, point to the server */
+    if (origin.startsWith('file://') || origin === 'null') {
+        return 'http://localhost:3000';
+    }
+    return '';  /* same origin — works when served by Express */
+})();
+
+/* ══════════════════════════════════════════════
+   AUTH STATE
+══════════════════════════════════════════════ */
+var authToken   = localStorage.getItem('gps_token')   || null;
+var currentUser = JSON.parse(localStorage.getItem('gps_user') || 'null');
+var channelId   = localStorage.getItem('gps_channel') || null;
+var channelKey  = localStorage.getItem('gps_apikey')  || null;
+var authMode    = 'login';
+
+function api(path, opts) {
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    if (authToken) opts.headers['Authorization'] = 'Bearer ' + authToken;
+    opts.headers['Content-Type'] = opts.headers['Content-Type'] || 'application/json';
+    return fetch(SERVER_URL + path, opts);
+}
+
+/* Safe JSON parse — catches HTML error pages returned instead of JSON */
+function safeJson(r) {
+    return r.text().then(text => {
+        try { return JSON.parse(text); }
+        catch(e) {
+            var preview = text.slice(0, 120).replace(/\n/g, ' ');
+            throw new Error('Server returned non-JSON: ' + preview);
+        }
+    });
+}
+
+function switchTab(mode) {
+    authMode = mode;
+    document.querySelectorAll('.login-tab').forEach((t,i) => t.classList.toggle('active', (i===0 && mode==='login') || (i===1 && mode==='signup')));
+    document.getElementById('signupFields').style.display = mode === 'signup' ? 'block' : 'none';
+    document.getElementById('loginBtn').textContent = mode === 'login' ? 'LOGIN' : 'SIGN UP';
+    document.getElementById('loginErr').textContent = '';
+}
+
+function doAuth() {
+    var email = document.getElementById('li-email').value.trim();
+    var pass  = document.getElementById('li-pass').value;
+    var err   = document.getElementById('loginErr');
+    if (!email || !pass) { err.textContent = 'Please fill all fields.'; return; }
+
+    var body = { email, password: pass };
+    if (authMode === 'signup') {
+        var uname = document.getElementById('li-username').value.trim();
+        if (!uname) { err.textContent = 'Username is required.'; return; }
+        body.username = uname;
+    }
+
+    var endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+    document.getElementById('loginBtn').textContent = '...';
+
+    fetch(SERVER_URL + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    })
+    .then(safeJson)
+    .then(data => {
+        if (data.error) { err.textContent = data.error; document.getElementById('loginBtn').textContent = authMode === 'login' ? 'LOGIN' : 'SIGN UP'; return; }
+        authToken   = data.token;
+        currentUser = data.user;
+        localStorage.setItem('gps_token', authToken);
+        localStorage.setItem('gps_user',  JSON.stringify(currentUser));
+        document.getElementById('loginOverlay').style.display = 'none';
+        loadChannels();
+    })
+    .catch(e => { err.textContent = 'Server error: ' + e.message; document.getElementById('loginBtn').textContent = authMode === 'login' ? 'LOGIN' : 'SIGN UP'; });
+}
+
+function logout() {
+    localStorage.removeItem('gps_token');
+    localStorage.removeItem('gps_user');
+    localStorage.removeItem('gps_channel');
+    localStorage.removeItem('gps_apikey');
+    authToken = null; currentUser = null; channelId = null; channelKey = null;
+    location.reload();
+}
+
+/* ══════════════════════════════════════════════
+   CHANNEL SELECTION
+══════════════════════════════════════════════ */
+function loadChannels() {
+    api('/api/channels')
+        .then(safeJson)
+        .then(chs => {
+            if (chs.error) { showError(chs.error); return; }
+            if (chs.length === 0) {
+                document.getElementById('channelList').innerHTML = '<div class="no-data">No channels yet.<br>Create one below.</div>';
+                document.getElementById('channelOverlay').classList.add('show');
+                return;
+            }
+            /* If we have a saved channel and it still exists, go straight to map */
+            if (channelId && chs.find(c => c.id === channelId)) {
+                channelKey = chs.find(c => c.id === channelId).api_key;
+                localStorage.setItem('gps_apikey', channelKey);
+                startMap();
+                return;
+            }
+            /* Show selector */
+            var list = document.getElementById('channelList');
+            list.innerHTML = '';
+            chs.forEach(ch => {
+                var div = document.createElement('div');
+                div.className = 'ch-item';
+                div.innerHTML = '<div><div class="ch-name">' + ch.name + '</div><div class="ch-key">API Key: ' + ch.api_key.slice(0,12) + '...</div></div><div style="color:#e67e22;font-size:18px;">›</div>';
+                div.onclick = () => selectChannel(ch);
+                list.appendChild(div);
+            });
+            document.getElementById('channelOverlay').classList.add('show');
+        })
+        .catch(e => showError('Could not load channels: ' + e.message));
+}
+
+function selectChannel(ch) {
+    channelId  = ch.id;
+    channelKey = ch.api_key;
+    localStorage.setItem('gps_channel', channelId);
+    localStorage.setItem('gps_apikey',  channelKey);
+    document.getElementById('channelOverlay').classList.remove('show');
+    startMap();
+}
+
+function createChannel() {
+    var name = document.getElementById('newChName').value.trim();
+    var err  = document.getElementById('chErr');
+    if (!name) { err.textContent = 'Enter a channel name.'; return; }
+
+    api('/api/channels', {
+        method: 'POST',
+        body: JSON.stringify({ name, fields: ['speed'] })
+    })
+    .then(safeJson)
+    .then(ch => {
+        if (ch.error) { err.textContent = ch.error; return; }
+        selectChannel(ch);
+    })
+    .catch(e => { err.textContent = 'Error: ' + e.message; });
+}
+
+/* ══════════════════════════════════════════════
+   MAP BOOTSTRAP
+══════════════════════════════════════════════ */
+var mapReady     = false;
+var authDone     = false;
+var pendingStart = false;
+
+function onMapReady() {
+    mapReady = true;
+    if (authDone || (authToken && channelId)) startMap();
+}
+
+function startMap() {
+    authDone = true;
+    if (!mapReady) { pendingStart = true; return; }
+
+    document.getElementById('infoBox').style.display = 'block';
+    document.getElementById('bottomBar').style.display = 'flex';
+    document.getElementById('userLabel').textContent   = currentUser ? currentUser.username : '';
+
+    if (!map) initMap();
+
+    updateSetupInfo();
+    buildDayTabs();
+    requestNotifPermission();
+    startMyLocation();   /* ← browser GPS blue dot */
+    statusAgeTimer = setInterval(() => { updateStatusAge(); checkDeviceStatus(); }, 1000);
+
+    loadHistory()
+        .then(() => { setInterval(updateLocation, 15000); updateLocation(); })
+        .catch(() => { showError('Could not load today\'s history.'); setInterval(updateLocation, 15000); updateLocation(); });
+}
+
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+var map, polyline;
+var carMarker = null, startMarker = null, stopMarker = null;
+var historyPolyline = null;
+var simCarMarker = null, simStartMarker = null, simStopMarker = null;
+
+var path = [], feedTimestamps = [];
+var prevLat = null, prevLon = null, prevTime = null, prevBearing = 0;
+var dailyDistance = 0;
+var currentDay = new Date().getDate();
+var historyCache = {}, activeHistoryDay = null, isViewingHistory = false;
+
+/* ── My Location ── */
+var myLocationMarker  = null;
+var myLocationWatchId = null;
+var myLat = null, myLon = null;
+
+var IDLE_THRESHOLD       = 300000;
+var OFFLINE_THRESHOLD_MS = 2 * 60 * 1000;
+var lastDataTime         = null;
+var deviceOnline         = null;
+var notifPermission      = false;
+var offlineNotifSent     = false;
+var statusAgeTimer       = null;
+
+/* ── Playback ── */
+var pbData = null, pbPlaying = false, pbSpeed = 50;
+var pbDayKey = null, pbIndex = 0;
+var pbStartTime = 0, pbEndTime = 0, pbTotalMs = 0, pbVirtualMs = 0;
+var pbLastTick = 0, pbRAF = null, pbClockTimer = null;
+
+/* ══════════════════════════════════════════════
+   MY LOCATION — browser GPS blue dot
+══════════════════════════════════════════════ */
+function startMyLocation() {
+    if (!("geolocation" in navigator)) {
+        showError("Browser GPS not supported on this device.");
+        return;
+    }
+    /* Watch position continuously */
+    myLocationWatchId = navigator.geolocation.watchPosition(
+        onMyLocation,
+        function(err) {
+            var msgs = ["", "Permission denied — allow location access in browser", "Location unavailable", "Location request timed out"];
+            showError("My location: " + (msgs[err.code] || err.message));
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
+}
+
+function onMyLocation(pos) {
+    myLat = pos.coords.latitude;
+    myLon = pos.coords.longitude;
+
+    if (!map) return;
+
+    /* Create or move the blue dot marker */
+    if (!myLocationMarker) {
+        var el = document.createElement("div");
+        el.className = "my-location-wrap";
+        el.innerHTML = '<div class="my-location-pulse"></div><div class="my-location-dot"></div>';
+        myLocationMarker = new mappls.Marker({
+            map: map,
+            position: { lat: myLat, lng: myLon },
+            html: el.outerHTML,
+            offset: [0, 0]
+        });
+    } else {
+        myLocationMarker.setPosition({ lat: myLat, lng: myLon });
+    }
+
+    /* Update distance to vehicle if we have vehicle position */
+    updateDistanceToVehicle();
+}
+
+function updateDistanceToVehicle() {
+    var el = document.getElementById("val-dist-to-car");
+    if (!el) return;
+    if (myLat === null || prevLat === null) {
+        el.textContent = "-- m";
+        return;
+    }
+    var d = haversine(myLat, myLon, prevLat, prevLon);
+    if (d < 1000) {
+        el.textContent = Math.round(d) + " m";
+    } else {
+        el.textContent = (d / 1000).toFixed(2) + " km";
+    }
+}
+
+/* ══════════════════════════════════════════════
+   ONLINE / OFFLINE DETECTION
+══════════════════════════════════════════════ */
+function requestNotifPermission() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") { notifPermission = true; return; }
+    if (Notification.permission !== "denied") Notification.requestPermission().then(p => { notifPermission = p === "granted"; });
+}
+function recordDataReceived(ts) { lastDataTime = ts || new Date(); offlineNotifSent = false; setDeviceStatus(true); }
+function checkDeviceStatus() {
+    if (!lastDataTime) { setDeviceStatus(null); return; }
+    var age = Date.now() - lastDataTime.getTime();
+    var online = age < OFFLINE_THRESHOLD_MS;
+    setDeviceStatus(online);
+    if (!online && !offlineNotifSent) { offlineNotifSent = true; sendOfflineNotification(age); }
+}
+function setDeviceStatus(online) {
+    deviceOnline = online;
+    var dot  = document.getElementById("statusDot");
+    var text = document.getElementById("statusText");
+    if (online === null) { dot.className = "unknown"; text.className = "unknown"; text.textContent = "CHECKING..."; }
+    else if (online)     { dot.className = "online";  text.className = "online";  text.textContent = "ONLINE"; }
+    else                 { dot.className = "offline"; text.className = "offline"; text.textContent = "OFFLINE"; }
+    updateStatusAge();
+}
+function updateStatusAge() {
+    var el = document.getElementById("statusAge");
+    if (!lastDataTime) { el.textContent = ""; return; }
+    var s = Math.floor((Date.now() - lastDataTime.getTime()) / 1000);
+    el.textContent = s < 60 ? s + "s ago" : s < 3600 ? Math.floor(s/60) + "m ago" : Math.floor(s/3600) + "h ago";
+}
+function sendOfflineNotification(ageMs) {
+    if (!notifPermission || Notification.permission !== "granted") return;
+    var mins = Math.floor(ageMs / 60000);
+    new Notification("GPS Tracker — Device Offline", {
+        body: "No data received for " + mins + " minute" + (mins !== 1 ? "s" : "") + ".",
+        tag: "gps-offline"
+    });
+}
+
+/* ══════════════════════════════════════════════
+   CAR SVG / BEARING
+══════════════════════════════════════════════ */
+function carSVG(color) {
+    color = color || "#e67e22";
+    return '<svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">' +
+        '<ellipse cx="18" cy="18" rx="14" ry="14" fill="rgba(0,0,0,0.25)"/>' +
+        '<rect x="10" y="8" width="16" height="22" rx="4" fill="' + color + '"/>' +
+        '<rect x="12" y="10" width="12" height="8" rx="2" fill="rgba(255,255,255,0.85)"/>' +
+        '<circle cx="13" cy="28" r="2.5" fill="#222"/><circle cx="23" cy="28" r="2.5" fill="#222"/>' +
+        '<circle cx="13" cy="10" r="1.5" fill="rgba(255,255,255,0.5)"/><circle cx="23" cy="10" r="1.5" fill="#ffeb3b"/>' +
+    '</svg>';
+}
+function makeCarElement(color) {
+    var div = document.createElement("div"); div.className = "car-marker-wrap";
+    div.innerHTML = carSVG(color); return div;
+}
+function calcBearing(lat1, lon1, lat2, lon2) {
+    var dLon = (lon2 - lon1) * Math.PI / 180;
+    var y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+    var x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+            Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+    return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+function rotateCar(el, bearing) {
+    if (!el) return;
+    var wrap = el.querySelector ? el.querySelector(".car-marker-wrap") : el;
+    if (wrap) wrap.style.transform = "rotate(" + bearing + "deg)";
+}
+function removeMarker(m) {
+    if (!m) return;
+    try { m.remove(); } catch(e) {}
+    try { m.setMap(null); } catch(e) {}
+}
+
+/* ══════════════════════════════════════════════
+   INIT MAP
+══════════════════════════════════════════════ */
+function initMap() {
+    map = new mappls.Map('map', { center:[28.61, 77.23], zoom:15 });
+    polyline = new mappls.Polyline({ map:map, path:[], strokeColor:"#e67e22", strokeWeight:4 });
+    carMarker = new mappls.Marker({
+        map: map, position: { lat:28.61, lng:77.23 },
+        html: makeCarElement("#e67e22").outerHTML, offset:[0,0]
+    });
+}
+function handleSDKError() { showError("Map SDK failed to load."); }
+
+/* ══════════════════════════════════════════════
+   LIVE LOCATION  — polls /api/data/:id/last
+══════════════════════════════════════════════ */
+function updateLocation() {
+    if (!channelId || !authToken) return;
+    api('/api/data/' + channelId + '/last')
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return safeJson(r); })
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+
+            var lat   = data.lat   ? parseFloat(data.lat.value)   : NaN;
+            var lon   = data.lng   ? parseFloat(data.lng.value)   : NaN;
+            var speed = data.speed ? parseFloat(data.speed.value) : 0;
+            if (isNaN(lat) || isNaN(lon)) return;
+
+            /* Timestamp — use the lat field's timestamp (unix seconds) */
+            var ts = data.lat && data.lat.timestamp ? new Date(data.lat.timestamp * 1000) : new Date();
+            recordDataReceived(ts);
+
+            var now = new Date();
+            if (now.getDate() !== currentDay) {
+                dailyDistance = 0; currentDay = now.getDate();
+                path = []; feedTimestamps = []; prevLat = null; prevLon = null;
+                clearStartStopMarkers();
+            }
+
+            if (prevLat !== null) {
+                prevBearing = calcBearing(prevLat, prevLon, lat, lon);
+                rotateCar(carMarker.getElement ? carMarker.getElement() : null, prevBearing);
+            }
+
+            carMarker.setPosition({ lat:lat, lng:lon });
+            if (!isViewingHistory) map.setCenter({ lat:lat, lng:lon });
+
+            var moveDist = prevLat !== null ? haversine(prevLat, prevLon, lat, lon) : Infinity;
+            if (moveDist > 10) {
+                path.push({ lat:lat, lng:lon });
+                feedTimestamps.push(ts);
+                polyline.setPath([...path]);
+                if (prevLat !== null) dailyDistance += moveDist;
+                prevLat = lat; prevLon = lon; prevTime = ts;
+                if (path.length === 1) placeStartMarker(lat, lon);
+                updateStopMarker(lat, lon, ts);
+            }
+
+            updateInfoBox(speed, dailyDistance, ts);
+            updateDistanceToVehicle();
+        })
+        .catch(err => { checkDeviceStatus(); showError("Live update failed: " + err.message); });
+}
+
+/* ══════════════════════════════════════════════
+   LOAD TODAY'S HISTORY  — polls /api/data/:id/feeds
+══════════════════════════════════════════════ */
+function loadHistory() {
+    if (!channelId || !authToken) return Promise.reject("no channel");
+    var midnight = new Date(); midnight.setHours(0,0,0,0);
+    var since = Math.floor(midnight.getTime() / 1000);
+
+    return api('/api/data/' + channelId + '/feeds?limit=8000&since=' + since)
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return safeJson(r); })
+        .then(data => {
+            var feeds = data.feeds || [];
+            processFeedsIntoPath(feeds, path, feedTimestamps);
+
+            for (var i = 1; i < path.length; i++)
+                dailyDistance += haversine(path[i-1].lat, path[i-1].lng, path[i].lat, path[i].lng);
+
+            polyline.setPath([...path]);
+
+            if (path.length > 0) {
+                var last = path[path.length - 1];
+                carMarker.setPosition(last);
+                map.setCenter(last);
+                prevLat = last.lat; prevLon = last.lng;
+                prevTime = feedTimestamps[feedTimestamps.length - 1] || new Date();
+                placeStartMarker(path[0].lat, path[0].lng);
+            }
+            updateInfoBox(0, dailyDistance, prevTime || new Date());
+        });
+}
+
+/*
+  The feeds endpoint returns rows like:
+  { field_name: "lat", value: 28.61, timestamp: 1712345678 }
+  We group by timestamp to pair lat+lng+speed together.
+*/
+function processFeedsIntoPath(feeds, outPath, outTs) {
+    /* Group by timestamp */
+    var byTs = {};
+    feeds.forEach(row => {
+        var t = row.timestamp;
+        if (!byTs[t]) byTs[t] = {};
+        byTs[t][row.field_name] = row.value !== null ? row.value : parseFloat(row.raw_value);
+    });
+
+    var sorted = Object.keys(byTs).map(Number).sort((a,b) => a-b);
+    sorted.forEach(t => {
+        var pt = byTs[t];
+        if (pt.lat != null && pt.lng != null) {
+            outPath.push({ lat: pt.lat, lng: pt.lng });
+            outTs.push(new Date(t * 1000));
+        }
+    });
+}
+
+/* ══════════════════════════════════════════════
+   START / STOP MARKERS
+══════════════════════════════════════════════ */
+function placeStartMarker(lat, lon) {
+    removeMarker(startMarker); startMarker = null;
+    startMarker = new mappls.Marker({ map:map, position:{lat,lng:lon},
+        html:'<div style="background:#27ae60;color:#fff;padding:3px 7px;border-radius:10px;font-size:11px;font-family:Courier New,monospace;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">▶ START</div>' });
+}
+function updateStopMarker(lat, lon, time) {
+    var isIdle = prevTime && (time - prevTime) > IDLE_THRESHOLD;
+    if (!isIdle) { removeMarker(stopMarker); stopMarker = null; return; }
+    if (!stopMarker) {
+        stopMarker = new mappls.Marker({ map:map, position:{lat,lng:lon},
+            html:'<div style="background:#c0392b;color:#fff;padding:3px 7px;border-radius:10px;font-size:11px;font-family:Courier New,monospace;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">■ STOP</div>' });
+    } else { stopMarker.setPosition({lat,lng:lon}); }
+}
+function placeHistoryStartStop(data) {
+    clearSimStartStop();
+    if (!data.path.length) return;
+    var f = data.path[0], l = data.path[data.path.length-1];
+    simStartMarker = new mappls.Marker({ map:map, position:{lat:f.lat,lng:f.lng},
+        html:'<div style="background:#27ae60;color:#fff;padding:3px 7px;border-radius:10px;font-size:11px;font-family:Courier New,monospace;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">▶ START</div>' });
+    simStopMarker  = new mappls.Marker({ map:map, position:{lat:l.lat,lng:l.lng},
+        html:'<div style="background:#c0392b;color:#fff;padding:3px 7px;border-radius:10px;font-size:11px;font-family:Courier New,monospace;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">■ STOP</div>' });
+}
+function clearStartStopMarkers() { removeMarker(startMarker); startMarker=null; removeMarker(stopMarker); stopMarker=null; }
+function clearSimStartStop()     { removeMarker(simStartMarker); simStartMarker=null; removeMarker(simStopMarker); simStopMarker=null; }
+
+/* ══════════════════════════════════════════════
+   LIVE LAYER SHOW/HIDE
+══════════════════════════════════════════════ */
+function hideLiveLayer() {
+    try { if (polyline) polyline.setPath([]); } catch(e) {}
+    removeMarker(carMarker); removeMarker(startMarker); removeMarker(stopMarker);
+}
+function showLiveLayer() {
+    if (polyline && path.length > 0) polyline.setPath([...path]);
+    if (prevLat !== null) {
+        removeMarker(carMarker);
+        carMarker = new mappls.Marker({ map:map, position:{lat:prevLat,lng:prevLon}, html:makeCarElement("#e67e22").outerHTML, offset:[0,0] });
+        if (prevBearing) setTimeout(() => {
+            var el = carMarker.getElement ? carMarker.getElement() : null;
+            var wrap = el ? el.querySelector(".car-marker-wrap") : null;
+            if (wrap) wrap.style.transform = "rotate(" + prevBearing + "deg)";
+        }, 100);
+    }
+    if (path.length > 0) {
+        removeMarker(startMarker);
+        startMarker = new mappls.Marker({ map:map, position:path[0],
+            html:'<div style="background:#27ae60;color:#fff;padding:3px 7px;border-radius:10px;font-size:11px;font-family:Courier New,monospace;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">▶ START</div>' });
+    }
+}
+function goLive() {
+    clearHistoryRoute(); closeHistoryPanel();
+    if (prevLat !== null) map.setCenter({ lat:prevLat, lng:prevLon });
+    map.setZoom(15);
+}
+
+/* ══════════════════════════════════════════════
+   7-DAY HISTORY PANEL
+══════════════════════════════════════════════ */
+function buildDayTabs() {
+    var el = document.getElementById("dayTabs"); el.innerHTML = "";
+    var today = new Date();
+    var names = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    for (var i = 0; i < 7; i++) {
+        var d = new Date(today); d.setDate(today.getDate() - i);
+        var key = dateKey(d);
+        var btn = document.createElement("button");
+        btn.className = "dayTab"; btn.dataset.key = key;
+        btn.innerHTML = '<span class="day-name">' + (i===0?"Today":i===1?"Yesterday":names[d.getDay()]) + '</span><span class="day-date">' + d.getDate() + "/" + (d.getMonth()+1) + '</span>';
+        btn.onclick = (function(k, iso, b) { return function() { selectDay(k, iso, b); }; })(key, d.toISOString(), btn);
+        el.appendChild(btn);
+    }
+}
+
+function selectDay(key, isoDate, tabEl) {
+    document.querySelectorAll(".dayTab").forEach(t => t.classList.remove("active"));
+    tabEl.classList.add("active");
+    document.getElementById("dayContent").innerHTML = '<div class="day-loading">Loading...</div>';
+
+    if (historyCache[key]) { renderDayContent(key, historyCache[key]); return; }
+
+    var d = new Date(isoDate);
+    var dayStart = new Date(d); dayStart.setHours(0,0,0,0);
+    var dayEnd   = new Date(d); dayEnd.setHours(23,59,59,999);
+    var since = Math.floor(dayStart.getTime() / 1000);
+    var until = Math.floor(dayEnd.getTime()   / 1000);
+
+    api('/api/data/' + channelId + '/feeds?limit=8000&since=' + since + '&until=' + until)
+        .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return safeJson(r); })
+        .then(data => {
+            var feeds = data.feeds || [];
+            var pts = [], ts = [], maxSpd = 0;
+
+            /* Group by timestamp */
+            var byTs = {};
+            feeds.forEach(row => {
+                var t = row.timestamp;
+                if (!byTs[t]) byTs[t] = {};
+                byTs[t][row.field_name] = row.value !== null ? row.value : parseFloat(row.raw_value);
+            });
+            Object.keys(byTs).map(Number).sort((a,b)=>a-b).forEach(t => {
+                var pt = byTs[t];
+                if (pt.lat != null && pt.lng != null) {
+                    pts.push({ lat:pt.lat, lng:pt.lng });
+                    ts.push(new Date(t * 1000));
+                }
+                if (pt.speed != null && pt.speed > maxSpd) maxSpd = pt.speed;
+            });
+
+            var dist = 0;
+            for (var i = 1; i < pts.length; i++)
+                dist += haversine(pts[i-1].lat, pts[i-1].lng, pts[i].lat, pts[i].lng);
+
+            var result = { path:pts, timestamps:ts, distance:dist, points:pts.length, maxSpeed:maxSpd };
+            historyCache[key] = result;
+            renderDayContent(key, result);
+        })
+        .catch(err => {
+            document.getElementById("dayContent").innerHTML = '<div class="no-data">Failed to load.<br>' + err.message + '</div>';
+        });
+}
+
+function renderDayContent(key, data) {
+    var content = document.getElementById("dayContent");
+    if (!data.path.length) { content.innerHTML = '<div class="no-data">No tracking data<br>for this day.</div>'; return; }
+    var isActive = activeHistoryDay === key;
+    content.innerHTML =
+        '<div class="day-stats">' +
+            '<div class="stat-card"><div class="s-label">Distance</div><div class="s-value">' + (data.distance/1000).toFixed(2) + ' km</div></div>' +
+            '<div class="stat-card"><div class="s-label">GPS Points</div><div class="s-value">' + data.points + '</div></div>' +
+            '<div class="stat-card"><div class="s-label">Max Speed</div><div class="s-value">' + data.maxSpeed.toFixed(1) + ' km/h</div></div>' +
+            '<div class="stat-card"><div class="s-label">Route</div><div class="s-value">✓ Available</div></div>' +
+        '</div>' +
+        '<button class="action-btn ' + (isActive ? 'btn-green' : 'btn-orange') + '" onclick="toggleHistoryRoute(\'' + key + '\')">' +
+            (isActive ? '✓ Route Shown — Click to Hide' : '🗺 Show Route on Map') +
+        '</button>' +
+        '<button class="action-btn btn-blue" onclick="startPlayback(\'' + key + '\')">▶ Play Route Simulation</button>';
+}
+
+function toggleHistoryRoute(key) {
+    if (activeHistoryDay === key) { clearHistoryRoute(); return; }
+    var data = historyCache[key];
+    if (!data || !data.path.length) return;
+    if (historyPolyline) { try { historyPolyline.remove(); } catch(e) { try { historyPolyline.setMap(null); } catch(e2){} } historyPolyline = null; }
+    historyPolyline = new mappls.Polyline({ map:map, path:[...data.path], strokeColor:"#3498db", strokeWeight:4 });
+    placeHistoryStartStop(data);
+    map.setCenter(data.path[0]); map.setZoom(13);
+    activeHistoryDay = key; isViewingHistory = true;
+    hideLiveLayer();
+    var d = new Date(key);
+    document.getElementById("legendLabel").textContent = d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) + " — " + (data.distance/1000).toFixed(2) + " km";
+    document.getElementById("historyLegend").style.display = "flex";
+    document.getElementById("goLiveBtn").classList.add("active");
+    var t = document.querySelector(".dayTab.active");
+    if (t) renderDayContent(key, data);
+}
+
+function clearHistoryRoute() {
+    if (historyPolyline) { try { historyPolyline.remove(); } catch(e) { try { historyPolyline.setMap(null); } catch(e2){} } historyPolyline = null; }
+    activeHistoryDay = null; isViewingHistory = false;
+    document.getElementById("historyLegend").style.display = "none";
+    document.getElementById("goLiveBtn").classList.remove("active");
+    clearSimStartStop(); stopPlayback(); showLiveLayer();
+    var t = document.querySelector(".dayTab.active");
+    if (t && historyCache[t.dataset.key]) renderDayContent(t.dataset.key, historyCache[t.dataset.key]);
+}
+
+function openHistoryPanel() {
+    document.getElementById("historyPanel").classList.add("open");
+    var first = document.querySelector(".dayTab");
+    if (first && !document.querySelector(".dayTab.active")) first.click();
+}
+function closeHistoryPanel() { document.getElementById("historyPanel").classList.remove("open"); }
+
+/* ══════════════════════════════════════════════
+   PLAYBACK
+══════════════════════════════════════════════ */
+function startPlayback(key) {
+    var data = historyCache[key];
+    if (!data || data.path.length < 2) { showError("Not enough data to simulate."); return; }
+    if (!data.timestamps || !data.timestamps[0] || !data.timestamps[data.timestamps.length-1]) { showError("No timestamps."); return; }
+    stopPlayback();
+    if (activeHistoryDay !== key) toggleHistoryRoute(key);
+    pbData = data; pbDayKey = key;
+    pbStartTime = data.timestamps[0].getTime();
+    pbEndTime   = data.timestamps[data.timestamps.length-1].getTime();
+    pbTotalMs   = pbEndTime - pbStartTime;
+    pbVirtualMs = 0;
+    if (pbTotalMs <= 0) { showError("Invalid timestamps."); return; }
+    simCarMarker = new mappls.Marker({ map:map, position:data.path[0], html:makeCarElement("#ffffff").outerHTML, offset:[0,0] });
+    var slider = document.getElementById("pbSlider");
+    slider.min = 0; slider.max = pbTotalMs; slider.value = 0;
+    updateSliderGradient(0, pbTotalMs);
+    document.getElementById("pbCurrent").textContent = formatTime(data.timestamps[0]);
+    document.getElementById("pbTotal").textContent   = formatTime(data.timestamps[data.timestamps.length-1]);
+    updatePlaybackClock(0);
+    document.getElementById("playbackBar").classList.add("visible");
+    document.getElementById("goLiveBtn").classList.add("active");
+    map.setCenter(data.path[0]); map.setZoom(14);
+    pbPlaying = false; togglePlayback();
+}
+function togglePlayback() {
+    if (!pbData) return;
+    pbPlaying = !pbPlaying;
+    document.getElementById("pbPlayBtn").textContent = pbPlaying ? "⏸" : "▶";
+    if (pbPlaying) { pbLastTick = performance.now(); pbClockTimer = setInterval(advancePlayback, 50); }
+    else { if (pbClockTimer) { clearInterval(pbClockTimer); pbClockTimer = null; } }
+}
+function advancePlayback() {
+    if (!pbPlaying || !pbData) return;
+    var now = performance.now(), elapsed = now - pbLastTick; pbLastTick = now;
+    pbVirtualMs += elapsed * pbSpeed;
+    if (pbVirtualMs >= pbTotalMs) {
+        pbVirtualMs = pbTotalMs; pbPlaying = false;
+        if (pbClockTimer) { clearInterval(pbClockTimer); pbClockTimer = null; }
+        document.getElementById("pbPlayBtn").textContent = "▶";
+    }
+    renderPlaybackPosition(pbVirtualMs);
+}
+function renderPlaybackPosition(vMs) {
+    if (!pbData) return;
+    var absTime = pbStartTime + vMs, idx = 0;
+    for (var i = 0; i < pbData.timestamps.length - 1; i++) {
+        if (pbData.timestamps[i] && pbData.timestamps[i+1]) {
+            if (absTime <= pbData.timestamps[i+1].getTime()) { idx = i; break; }
+            idx = i;
+        }
+    }
+    var t0 = pbData.timestamps[idx]   ? pbData.timestamps[idx].getTime()   : pbStartTime;
+    var t1 = pbData.timestamps[idx+1] ? pbData.timestamps[idx+1].getTime() : pbEndTime;
+    var frac = t1 > t0 ? Math.min((absTime - t0) / (t1 - t0), 1) : 0;
+    var p0 = pbData.path[idx], p1 = pbData.path[idx+1] || p0;
+    var lat = p0.lat + (p1.lat - p0.lat) * frac;
+    var lon = p0.lng + (p1.lng - p0.lng) * frac;
+    simCarMarker.setPosition({ lat, lng:lon });
+    map.setCenter({ lat, lng:lon });
+    if (p1 !== p0) rotateCar(simCarMarker.getElement ? simCarMarker.getElement() : null, calcBearing(p0.lat, p0.lng, p1.lat, p1.lng));
+    updatePlaybackClock(vMs);
+    var slider = document.getElementById("pbSlider"); slider.value = vMs;
+    updateSliderGradient(vMs, pbTotalMs);
+}
+function scrubPlayback(val) { pbVirtualMs = parseFloat(val); if (!pbData) return; if (pbPlaying) pbLastTick = performance.now(); renderPlaybackPosition(pbVirtualMs); }
+function updatePlaybackClock(vMs) {
+    var d = new Date(pbStartTime + vMs);
+    document.getElementById("pbTimestamp").textContent = d.toLocaleTimeString() + "  ·  " + d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+}
+function formatTime(d) { return d ? d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "--"; }
+function changePlaybackSpeed(v) { pbSpeed = parseFloat(v); if (pbPlaying) pbLastTick = performance.now(); }
+function updateSliderGradient(cur, tot) {
+    var pct = tot > 0 ? cur/tot*100 : 0;
+    document.getElementById("pbSlider").style.background = "linear-gradient(to right, #e67e22 " + pct + "%, #444 " + pct + "%)";
+}
+function stopPlayback() {
+    pbPlaying = false;
+    if (pbClockTimer) { clearInterval(pbClockTimer); pbClockTimer = null; }
+    if (pbRAF) { cancelAnimationFrame(pbRAF); pbRAF = null; }
+    if (simCarMarker) { removeMarker(simCarMarker); simCarMarker = null; }
+    pbData = null; pbVirtualMs = 0;
+}
+function closePlayback() { stopPlayback(); document.getElementById("playbackBar").classList.remove("visible"); document.getElementById("pbPlayBtn").textContent = "▶"; }
+
+/* ══════════════════════════════════════════════
+   PHONE SETUP INFO
+══════════════════════════════════════════════ */
+function updateSetupInfo() {
+    var ngrokUrl = window.location.origin;
+    var url = ngrokUrl + '/api/data/update?api_key=' + (channelKey || 'YOUR_API_KEY') + '&lat=%LAT&lng=%LON&speed=%SPD&time=%TIMESTAMP';
+    document.getElementById('setupContent').innerHTML =
+        '<b style="color:#fff">1. Install GPSLogger (Android)</b><br>' +
+        'Play Store: search "GPSLogger"<br><br>' +
+        '<b style="color:#fff">2. Enable "Log to custom URL"</b><br>' +
+        'Settings → Logging → Log to custom URL<br><br>' +
+        '<b style="color:#fff">3. Set this URL:</b><br>' +
+        '<code>' + url + '</code><br><br>' +
+        '<b style="color:#fff">4. HTTP Method:</b> GET<br>' +
+        '<b style="color:#fff">5. Frequency:</b> Every 10–15 seconds<br><br>' +
+        '<span style="color:#27ae60">✓ Your API Key is pre-filled above</span>';
+}
+function toggleSetup() {
+    var el = document.getElementById('setupInfo');
+    el.style.display = el.style.display === 'block' ? 'none' : 'block';
+}
+
+/* ══════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════ */
+function dateKey(d) { return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function haversine(lat1, lon1, lat2, lon2) {
+    var R = 6371000, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+    var a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function updateInfoBox(speed, distMetres, time) {
+    document.getElementById("val-speed").textContent = speed.toFixed(1) + " km/h";
+    document.getElementById("val-dist").textContent  = (distMetres/1000).toFixed(2) + " km";
+    document.getElementById("val-time").textContent  = time ? time.toLocaleTimeString() : "--";
+}
+function showError(msg) {
+    var box = document.getElementById("errorBox");
+    box.textContent = "⚠ " + msg; box.style.display = "block";
+    setTimeout(() => { box.style.display = "none"; }, 6000);
+}
+
+/* ══════════════════════════════════════════════
+   BOOT — check if already logged in
+══════════════════════════════════════════════ */
+window.addEventListener('load', () => {
+    if (authToken && currentUser) {
+        document.getElementById('loginOverlay').style.display = 'none';
+        if (mapReady) startMap();
+        else authDone = true;
+        loadChannels();
+    }
+});
+</script>
+</body>
+</html>
